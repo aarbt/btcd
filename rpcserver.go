@@ -170,6 +170,8 @@ var rpcHandlersBeforeInit = map[string]commandHandler{
 	"validateaddress":       handleValidateAddress,
 	"verifychain":           handleVerifyChain,
 	"verifymessage":         handleVerifyMessage,
+
+	"searchdatatransactions": handleSearchDataTransactions,
 }
 
 // list of commands that we recognise, but for which btcd has no support because
@@ -3241,6 +3243,33 @@ func handleSearchRawTransactions(s *rpcServer, cmd interface{}, closeChan <-chan
 		rawTxns[i] = *rawTxn
 	}
 	return rawTxns, nil
+}
+
+func handleSearchDataTransactions(s *rpcServer, cmd interface{}, closeChan <-chan struct{}) (interface{}, error) {
+	c := cmd.(*btcjson.SearchDataTransactionsCmd)
+
+	data, err := hex.DecodeString(c.Data)
+	if err != nil {
+		return nil, &btcjson.RPCError{
+			Code:    btcjson.ErrRPCDecodeHexString,
+			Message: "Failed to decode data",
+		}
+	}
+	txs, err := s.server.db.FetchTxsByData(data)
+	if err != nil {
+		rpcsLog.Warnf("Failed to fetch transaction by data %s: %v",
+			c.Data, err)
+		return nil, &btcjson.RPCError{
+			Code:    btcjson.ErrRPCDatabase,
+			Message: "Failed to fetch transactions by data",
+		}
+	}
+
+	res := make([]btcjson.SearchDataTransactionsResult, len(txs))
+	for i, txSha := range txs {
+		res[i].TxHash = txSha.String()
+	}
+	return res, nil
 }
 
 // handleSendRawTransaction implements the sendrawtransaction command.

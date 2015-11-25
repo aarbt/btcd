@@ -575,6 +575,16 @@ func NewSearchRawTransactionsCmd(address string, verbose, skip, count *int, vinE
 	}
 }
 
+type SearchDataTransactionsCmd struct {
+	Data string
+}
+
+func NewSearchDataTransactionsCmd(data string) *SearchDataTransactionsCmd {
+	return &SearchDataTransactionsCmd{
+		Data: data,
+	}
+}
+
 // SendRawTransactionCmd defines the sendrawtransaction JSON-RPC command.
 type SendRawTransactionCmd struct {
 	HexTx         string
@@ -753,4 +763,6 @@ func init() {
 	MustRegisterCmd("verifychain", (*VerifyChainCmd)(nil), flags)
 	MustRegisterCmd("verifymessage", (*VerifyMessageCmd)(nil), flags)
 	MustRegisterCmd("verifytxoutproof", (*VerifyTxOutProofCmd)(nil), flags)
+
+	MustRegisterCmd("searchdatatransactions", (*SearchDataTransactionsCmd)(nil), flags)
 }

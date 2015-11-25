@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/btcsuite/btcd/database"
+	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btclog"
 	"github.com/btcsuite/btcutil"
@@ -58,6 +59,7 @@ type LevelDb struct {
 
 	txUpdateMap      map[wire.ShaHash]*txUpdateObj
 	txSpentUpdateMap map[wire.ShaHash]*spentTxUpdate
+	dataUpdateMap    map[string]*dataUpdateObj
 }
 
 var self = database.DriverDB{DbType: "leveldb", CreateDB: CreateDB, OpenDB: OpenDB}
@@ -180,6 +182,7 @@ func openDB(dbpath string, create bool) (pbdb database.Db, err error) {
 
 			db.txUpdateMap = map[wire.ShaHash]*txUpdateObj{}
 			db.txSpentUpdateMap = make(map[wire.ShaHash]*spentTxUpdate)
+			db.dataUpdateMap = make(map[string]*dataUpdateObj)
 
 			pbdb = &db
 		}
@@ -408,6 +411,24 @@ func (db *LevelDb) InsertBlock(block *btcutil.Block) (height int32, rerr error) 
 		if len(tx.TxOut)%8 != 0 {
 			for i := uint(len(tx.TxOut) % 8); i < 8; i++ {
 				spentbuf[spentbuflen-1] |= (byte(1) << i)
+			}
+		}
+		for index, in := range tx.TxOut {
+			if in.Value == 0 {
+				log.Infof("Value %v Script: %x", in.Value, in.PkScript)
+			}
+			if len(in.PkScript) > 0 && in.PkScript[0] == 0x6a {
+				log.Infof("TX %d %v Value %v Script: %x",
+					txidx, txsha, in.Value, in.PkScript)
+			}
+			_, data, err := txscript.ExtractPkScriptNullData(in.PkScript)
+			if err != nil {
+				log.Errorf("TX script parse failed: %v", err)
+				return 0, err
+			}
+			if data != nil {
+				log.Infof("TX with data: %x (%s)", data, data)
+				db.insertData(data, txsha, index)
 			}
 		}
 
@@ -645,6 +666,9 @@ func shaBlkToKey(sha *wire.ShaHash) []byte {
 var recordSuffixTx = []byte{'t', 'x'}
 var recordSuffixSpentTx = []byte{'s', 'x'}
 
+// TODO fix this
+var recordSuffixData = []byte{'d', 'a', 't', 'a'} // Beta test: Change to d, t later
+
 func shaTxToKey(sha *wire.ShaHash) []byte {
 	key := make([]byte, len(sha)+len(recordSuffixTx))
 	copy(key, sha[:])
@@ -659,6 +683,18 @@ func shaSpentTxToKey(sha *wire.ShaHash) []byte {
 	return key
 }
 
+func dataToKey(data []byte, txSha *wire.ShaHash, idx int) []byte {
+	key := make([]byte, len(data)+len(recordSuffixData))
+	copy(key, data[:])
+	copy(key[len(data):], recordSuffixData)
+	if txSha != nil {
+		key = append(key, txSha[:]...)
+		key = append(key, recordSuffixTx...)
+		//TODO append index
+	}
+	return key
+}
+
 func (db *LevelDb) lBatch() *leveldb.Batch {
 	if db.lbatch == nil {
 		db.lbatch = new(leveldb.Batch)
@@ -669,7 +705,8 @@ func (db *LevelDb) lBatch() *leveldb.Batch {
 func (db *LevelDb) processBatches() error {
 	var err error
 
-	if len(db.txUpdateMap) != 0 || len(db.txSpentUpdateMap) != 0 || db.lbatch != nil {
+	if len(db.txUpdateMap) != 0 || len(db.txSpentUpdateMap) != 0 ||
+		len(db.dataUpdateMap) != 0 || db.lbatch != nil {
 		if db.lbatch == nil {
 			db.lbatch = new(leveldb.Batch)
 		}
@@ -697,6 +734,12 @@ func (db *LevelDb) processBatches() error {
 				txdat := db.formatTxFullySpent(txSu.txl)
 				db.lbatch.Put(key, txdat)
 			}
+		}
+		for data, dataU := range db.dataUpdateMap {
+			key := dataToKey(dataU.data, dataU.txSha, dataU.txOutIdx)
+			log.Tracef("inserting data %x tx %v", data, dataU.txSha)
+			dat := db.formatData(dataU)
+			db.lbatch.Put(key, dat)
 		}
 
 		err = db.lDb.Write(db.lbatch, db.wo)

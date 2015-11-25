@@ -412,6 +412,10 @@ type SearchRawTransactionsResult struct {
 	Blocktime     int64        `json:"blocktime,omitempty"`
 }
 
+type SearchDataTransactionsResult struct {
+	TxHash string `json:"txhash"`
+}
+
 // TxRawDecodeResult models the data from the decoderawtransaction command.
 type TxRawDecodeResult struct {
 	Txid     string `json:"txid"`

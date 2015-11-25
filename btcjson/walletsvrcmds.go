@@ -527,6 +527,20 @@ func NewSendToAddressCmd(address string, amount float64, comment, commentTo *str
 	}
 }
 
+type SendNullDataCmd struct {
+	NullData  []byte
+	Comment   *string
+	CommentTo *string
+}
+
+func NewSendNullDataCmd(nullData []byte, comment, commentTo *string) *SendNullDataCmd {
+	return &SendNullDataCmd{
+		NullData:  nullData,
+		Comment:   comment,
+		CommentTo: commentTo,
+	}
+}
+
 // SetAccountCmd defines the setaccount JSON-RPC command.
 type SetAccountCmd struct {
 	Address string

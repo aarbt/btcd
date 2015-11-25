@@ -368,6 +368,10 @@ func MultiSigScript(pubkeys []*btcutil.AddressPubKey, nrequired int) ([]byte, er
 	return builder.Script()
 }
 
+func DataOutputScript(data []byte) ([]byte, error) {
+	return NewScriptBuilder().AddOp(OP_RETURN).AddData(data).Script()
+}
+
 // PushedData returns an array of byte slices containing any pushed data found
 // in the passed script.  This includes OP_0, but not OP_1 - OP_16.
 func PushedData(script []byte) ([][]byte, error) {
@@ -468,4 +472,20 @@ func ExtractPkScriptAddrs(pkScript []byte, chainParams *chaincfg.Params) (Script
 	}
 
 	return scriptClass, addrs, requiredSigs, nil
+}
+
+func ExtractPkScriptNullData(pkScript []byte) (ScriptClass, []byte, error) {
+	// No valid data if the script doesn't parse.
+	pops, err := parseScript(pkScript)
+	if err != nil {
+		return NonStandardTy, nil, err
+	}
+
+	if typeOfScript(pops) != NullDataTy {
+		return typeOfScript(pops), nil, nil
+	}
+	if len(pops) < 2 {
+		return typeOfScript(pops), nil, nil
+	}
+	return NullDataTy, pops[1].data, nil
 }

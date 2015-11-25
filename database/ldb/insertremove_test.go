@@ -196,3 +196,69 @@ endtest:
 		}
 	}
 }
+
+func TestInsertData(t *testing.T) {
+	// Ignore db remove errors since it means we didn't have an old one.
+	dbname := fmt.Sprintf("tstdbdata1")
+	dbnamever := dbname + ".ver"
+	_ = os.RemoveAll(dbname)
+	_ = os.RemoveAll(dbnamever)
+	db, err := database.CreateDB("leveldb", dbname)
+	if err != nil {
+		t.Fatalf("Failed to open test database %v", err)
+	}
+
+	defer os.RemoveAll(dbname)
+	defer os.RemoveAll(dbnamever)
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("Close: unexpected error: %v", err)
+		}
+	}()
+
+	list, err := db.FetchTxsByData([]byte("dhaskj2"))
+	if err != nil {
+		t.Fatalf("Get data failed %v", err)
+	}
+	if len(list) != 0 {
+		t.Errorf("Expected empty list, got length %d.", len(list))
+	}
+
+	txSha0, err := wire.NewShaHash([]byte("00001111222233334444555566667777"))
+	if err != nil {
+		t.Fatalf("Failed to set-up ShaHash %v", err)
+	}
+	txSha1, err := wire.NewShaHash([]byte("10001111222233334444555566667777"))
+	if err != nil {
+		t.Fatalf("Failed to set-up ShaHash %v", err)
+	}
+	err = db.InsertData([]byte("dhaskj1"), txSha0, 0)
+	if err != nil {
+		t.Fatalf("Insert data failed %v", err)
+	}
+
+	list, err = db.FetchTxsByData([]byte("dhaskj2"))
+	if err != nil {
+		t.Fatalf("Get data failed %v", err)
+	}
+	if len(list) != 0 {
+		t.Errorf("Expected empty list, got length %d.", len(list))
+	}
+
+	err = db.InsertData([]byte("dhaskj2"), txSha0, 0)
+	if err != nil {
+		t.Fatalf("Insert data failed %v", err)
+	}
+	err = db.InsertData([]byte("dhaskj2"), txSha1, 0)
+	if err != nil {
+		t.Fatalf("Insert data failed %v", err)
+	}
+
+	list, err = db.FetchTxsByData([]byte("dhaskj2"))
+	if err != nil {
+		t.Fatalf("Get data failed %v", err)
+	}
+	if len(list) != 2 {
+		t.Errorf("Expected list with 2 items, got %d.", len(list))
+	}
+}

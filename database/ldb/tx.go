@@ -67,6 +67,12 @@ type spentTxUpdate struct {
 	delete bool
 }
 
+type dataUpdateObj struct {
+	data     []byte
+	txSha    *wire.ShaHash
+	txOutIdx int
+}
+
 type txAddrIndex struct {
 	hash160   [ripemd160.Size]byte
 	blkHeight int32
@@ -129,6 +135,60 @@ func (db *LevelDb) getTxData(txsha *wire.ShaHash) (int32, int, int, []byte, erro
 	copy(spentBuf, buf[16:])
 
 	return int32(blkHeight), int(txOff), int(txLen), spentBuf, nil
+}
+
+func (db *LevelDb) InsertData(data []byte, txSha *wire.ShaHash, txOutIdx int) (err error) {
+	db.dbLock.Lock()
+	defer db.dbLock.Unlock()
+	defer func() {
+		if err == nil {
+			err = db.processBatches()
+		} else {
+			db.lBatch().Reset()
+		}
+	}()
+
+	err = db.insertData(data, txSha, txOutIdx)
+	return err
+}
+
+func (db *LevelDb) insertData(data []byte, txSha *wire.ShaHash, txOutIdx int) (err error) {
+	var dataU dataUpdateObj
+
+	dataU.data = data
+	dataU.txSha = txSha
+	dataU.txOutIdx = txOutIdx
+
+	db.dataUpdateMap[string(data)] = &dataU
+
+	return nil
+}
+
+func (db *LevelDb) formatData(du *dataUpdateObj) []byte {
+	//	binary.Write(b, binary.LittleEndian, du.data)
+
+	if du != nil && du.txSha != nil {
+		return du.txSha[:]
+	}
+	return []byte{}
+}
+
+func (db *LevelDb) getData(data []byte) ([]*wire.ShaHash, error) {
+	var list []*wire.ShaHash
+	key := dataToKey(data, nil, 0)
+	iter := db.lDb.NewIterator(util.BytesPrefix(key), nil)
+	for iter.Next() {
+		sha, err := wire.NewShaHash(iter.Value())
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, sha)
+	}
+	iter.Release()
+	if err := iter.Error(); err != nil {
+		return nil, err
+	}
+	return list, nil
 }
 
 func (db *LevelDb) getTxFullySpent(txsha *wire.ShaHash) ([]*spentTx, error) {
@@ -379,6 +439,17 @@ func (db *LevelDb) FetchTxBySha(txsha *wire.ShaHash) ([]*database.TxListReply, e
 		replycnt++
 	}
 	return replies, nil
+}
+
+func (db *LevelDb) FetchTxsByData(data []byte) ([]*wire.ShaHash, error) {
+	db.dbLock.Lock()
+	defer db.dbLock.Unlock()
+
+	hashList, err := db.getData(data)
+	if err != nil {
+		return nil, err
+	}
+	return hashList, nil
 }
 
 // addrIndexToKey serializes the passed txAddrIndex for storage within the DB.

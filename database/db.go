@@ -150,6 +150,9 @@ type Db interface {
 	// Sync verifies that the database is coherent on disk and no
 	// outstanding transactions are in flight.
 	Sync() (err error)
+
+	InsertData(data []byte, txSha *wire.ShaHash, txOutIdx int) error
+	FetchTxsByData(data []byte) ([]*wire.ShaHash, error)
 }
 
 // DriverDB defines a structure for backend drivers to use when they registered
