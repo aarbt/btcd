@@ -3267,7 +3267,11 @@ func handleSearchDataTransactions(s *rpcServer, cmd interface{}, closeChan <-cha
 
 	res := make([]btcjson.SearchDataTransactionsResult, len(txs))
 	for i, txSha := range txs {
-		res[i].TxHash = txSha.String()
+		res[i].TxHash = txSha.TxSha.String()
+		if txSha.BlockSha != nil {
+			res[i].BlockHash = txSha.BlockSha.String()
+			res[i].Time = txSha.Time
+		}
 	}
 	return res, nil
 }

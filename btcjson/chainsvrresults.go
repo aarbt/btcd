@@ -413,7 +413,9 @@ type SearchRawTransactionsResult struct {
 }
 
 type SearchDataTransactionsResult struct {
-	TxHash string `json:"txhash"`
+	TxHash    string `json:"txhash"`
+	BlockHash string `json:"blockhash,omitempty"`
+	Time      int64  `json:"time,omitempty"`
 }
 
 // TxRawDecodeResult models the data from the decoderawtransaction command.

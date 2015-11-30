@@ -152,7 +152,13 @@ type Db interface {
 	Sync() (err error)
 
 	InsertData(data []byte, txSha *wire.ShaHash, txOutIdx int) error
-	FetchTxsByData(data []byte) ([]*wire.ShaHash, error)
+	FetchTxsByData(data []byte) ([]TxData, error)
+}
+
+type TxData struct {
+	TxSha    *wire.ShaHash
+	BlockSha *wire.ShaHash
+	Time     int64
 }
 
 // DriverDB defines a structure for backend drivers to use when they registered

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 
 	"github.com/btcsuite/btcd/database"
 	"github.com/btcsuite/btcd/wire"
@@ -71,6 +72,8 @@ type dataUpdateObj struct {
 	data     []byte
 	txSha    *wire.ShaHash
 	txOutIdx int
+	blockSha *wire.ShaHash
+	time     int64
 }
 
 type txAddrIndex struct {
@@ -148,16 +151,20 @@ func (db *LevelDb) InsertData(data []byte, txSha *wire.ShaHash, txOutIdx int) (e
 		}
 	}()
 
-	err = db.insertData(data, txSha, txOutIdx)
+	err = db.insertData(data, txSha, txOutIdx, nil, 0)
 	return err
 }
 
-func (db *LevelDb) insertData(data []byte, txSha *wire.ShaHash, txOutIdx int) (err error) {
+func (db *LevelDb) insertData(data []byte, txSha *wire.ShaHash, txOutIdx int,
+	blockSha *wire.ShaHash, time int64) (err error) {
+
 	var dataU dataUpdateObj
 
 	dataU.data = data
 	dataU.txSha = txSha
 	dataU.txOutIdx = txOutIdx
+	dataU.blockSha = blockSha
+	dataU.time = time
 
 	db.dataUpdateMap[string(data)] = &dataU
 
@@ -168,21 +175,44 @@ func (db *LevelDb) formatData(du *dataUpdateObj) []byte {
 	//	binary.Write(b, binary.LittleEndian, du.data)
 
 	if du != nil && du.txSha != nil {
-		return du.txSha[:]
+		b := new(bytes.Buffer)
+		b.Write(du.txSha.Bytes())
+		b.Write(du.blockSha.Bytes())
+		binary.Write(b, binary.LittleEndian, du.time)
+
+		return b.Bytes()
 	}
 	return []byte{}
 }
 
-func (db *LevelDb) getData(data []byte) ([]*wire.ShaHash, error) {
-	var list []*wire.ShaHash
+func (db *LevelDb) getData(data []byte) ([]database.TxData, error) {
+	var list []database.TxData
 	key := dataToKey(data, nil, 0)
 	iter := db.lDb.NewIterator(util.BytesPrefix(key), nil)
 	for iter.Next() {
-		sha, err := wire.NewShaHash(iter.Value())
-		if err != nil {
-			return nil, err
+		item := database.TxData{}
+		val := iter.Value()
+		var err error
+		if len(val) == 32 { // TODO remove this once db has been updated.
+			item.TxSha, err = wire.NewShaHash(val)
+			if err != nil {
+				return nil, err
+			}
+		} else if len(val) == 72 {
+			item.TxSha, err = wire.NewShaHash(val[0:32])
+			if err != nil {
+				return nil, err
+			}
+			item.BlockSha, err = wire.NewShaHash(val[32:64])
+			if err != nil {
+				return nil, err
+			}
+			b := bytes.NewBuffer(val[64:72])
+			binary.Read(b, binary.LittleEndian, &item.Time)
+		} else {
+			return nil, fmt.Errorf("Non-standard length %d", len(val))
 		}
-		list = append(list, sha)
+		list = append(list, item)
 	}
 	iter.Release()
 	if err := iter.Error(); err != nil {
@@ -441,7 +471,7 @@ func (db *LevelDb) FetchTxBySha(txsha *wire.ShaHash) ([]*database.TxListReply, e
 	return replies, nil
 }
 
-func (db *LevelDb) FetchTxsByData(data []byte) ([]*wire.ShaHash, error) {
+func (db *LevelDb) FetchTxsByData(data []byte) ([]database.TxData, error) {
 	db.dbLock.Lock()
 	defer db.dbLock.Unlock()
 

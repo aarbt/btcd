@@ -746,6 +746,6 @@ func newMemDb() *MemDb {
 func (db *MemDb) InsertData([]byte, *wire.ShaHash, int) error {
 	return database.ErrNotImplemented
 }
-func (db *MemDb) FetchTxsByData([]byte) ([]*wire.ShaHash, error) {
+func (db *MemDb) FetchTxsByData([]byte) ([]database.TxData, error) {
 	return nil, database.ErrNotImplemented
 }

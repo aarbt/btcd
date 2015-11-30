@@ -424,11 +424,16 @@ func (db *LevelDb) InsertBlock(block *btcutil.Block) (height int32, rerr error) 
 			_, data, err := txscript.ExtractPkScriptNullData(in.PkScript)
 			if err != nil {
 				log.Errorf("TX script parse failed: %v", err)
-				return 0, err
+				continue
 			}
 			if data != nil {
 				log.Infof("TX with data: %x (%s)", data, data)
-				db.insertData(data, txsha, index)
+				err = db.insertData(data, txsha, index, blocksha,
+					mblock.Header.Timestamp.Unix())
+				if err != nil {
+					log.Errorf("TX insert failed: %v", err)
+					continue
+				}
 			}
 		}
 
@@ -749,6 +754,7 @@ func (db *LevelDb) processBatches() error {
 		}
 		db.txUpdateMap = map[wire.ShaHash]*txUpdateObj{}
 		db.txSpentUpdateMap = make(map[wire.ShaHash]*spentTxUpdate)
+		db.dataUpdateMap = make(map[string]*dataUpdateObj)
 	}
 
 	return nil
